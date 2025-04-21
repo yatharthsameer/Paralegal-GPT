@@ -1,0 +1,43 @@
+FROM solr:8.11
+
+USER root
+
+# Install hunspell and wget
+RUN apt-get update && \
+    apt-get install -y hunspell wget
+
+# Download Hungarian dictionary files
+RUN wget -O /tmp/hu_HU.aff https://cgit.freedesktop.org/libreoffice/dictionaries/plain/hu_HU/hu_HU.aff && \
+    wget -O /tmp/hu_HU.dic https://cgit.freedesktop.org/libreoffice/dictionaries/plain/hu_HU/hu_HU.dic
+
+# Copy configuration files
+COPY src/solr.deb/var/solr/data/opensemanticsearch /var/solr/data/opensemanticsearch
+COPY src/solr.deb/src/open-semantic-entity-search-api/src/solr/opensemanticsearch-entities /var/solr/data/opensemanticsearch-entities
+COPY src/solr.deb/etc /etc
+
+# Set up Hungarian dictionary
+RUN set -e; \
+    # Create directories with correct permissions
+    mkdir -p /var/solr/data/opensemanticsearch/conf/lang/hunspell && \
+    mkdir -p /var/solr/data/opensemanticsearch-entities/conf/lang/hunspell && \
+    # Copy dictionary files
+    cp /tmp/hu_HU.aff /var/solr/data/opensemanticsearch/conf/lang/hunspell/ && \
+    cp /tmp/hu_HU.dic /var/solr/data/opensemanticsearch/conf/lang/hunspell/ && \
+    cp /tmp/hu_HU.aff /var/solr/data/opensemanticsearch-entities/conf/lang/hunspell/ && \
+    cp /tmp/hu_HU.dic /var/solr/data/opensemanticsearch-entities/conf/lang/hunspell/ && \
+    # Set permissions
+    chmod 644 /var/solr/data/opensemanticsearch/conf/lang/hunspell/hu_HU.* && \
+    chmod 644 /var/solr/data/opensemanticsearch-entities/conf/lang/hunspell/hu_HU.* && \
+    # Set ownership
+    chown -R solr:solr /var/solr/data/opensemanticsearch && \
+    chown -R solr:solr /var/solr/data/opensemanticsearch-entities && \
+    # Verify files exist and are readable
+    ls -l /var/solr/data/opensemanticsearch/conf/lang/hunspell/hu_HU.* && \
+    ls -l /var/solr/data/opensemanticsearch-entities/conf/lang/hunspell/hu_HU.* && \
+    # Clean up
+    rm -f /tmp/hu_HU.*
+
+USER solr
+
+# Precreate the core
+CMD ["solr-precreate", "opensemanticsearch", "/var/solr/data/opensemanticsearch"]
