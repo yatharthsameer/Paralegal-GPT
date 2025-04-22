@@ -88,57 +88,75 @@ def rrf(list1, list2):
         scores[doc["id"]] += 1 / (RRF_K + rank)
         doc["matchType"] = "Exact"
 
-    # Process semantic matches
-    for rank, doc in enumerate(list2, 1):
+    # Consolidate semantic matches by original document ID
+    semantic_by_original_id = {}
+    for doc in list2:
+        if "original_id" in doc:
+            orig_id = doc["original_id"]
+            if orig_id not in semantic_by_original_id:
+                semantic_by_original_id[orig_id] = {
+                    "id": orig_id,
+                    "title_txt": doc["title_txt"].split(" - Relevant Section")[
+                        0
+                    ],  # Remove any section suffix
+                    "content": doc["content"],
+                    "content_txt": doc["content_txt"],
+                    "file_modified_dt": doc["file_modified_dt"],
+                    "Content-Length_i": doc["Content-Length_i"],
+                    "content_type_ss": doc["content_type_ss"],
+                    "author_ss": doc.get("author_ss", []),
+                    "container_s": doc.get("container_s", ""),
+                    "file_path_s": doc["file_path_s"],
+                    "file_path_basename_s": doc["file_path_basename_s"],
+                    "matchType": "Semantic",
+                    "score": doc.get("score", 0),
+                    "highlighting": {
+                        "content_txt": [doc["highlighting"]["content_txt"][0]]
+                    },
+                    "semantic_score": doc.get("score", 0),
+                }
+            else:
+                # Add this chunk's highlight to the consolidated document
+                semantic_by_original_id[orig_id]["highlighting"]["content_txt"].append(
+                    doc["highlighting"]["content_txt"][0]
+                )
+                # Update score if this chunk has a higher score
+                if doc.get("score", 0) > semantic_by_original_id[orig_id].get(
+                    "score", 0
+                ):
+                    semantic_by_original_id[orig_id]["score"] = doc.get("score", 0)
+                    semantic_by_original_id[orig_id]["semantic_score"] = doc.get(
+                        "score", 0
+                    )
+        else:
+            # Handle any semantic results without original_id
+            scores.setdefault(doc["id"], 0)
+            scores[doc["id"]] += 1 / (
+                RRF_K + 1
+            )  # Use fixed rank of 1 since we're not in an enumeration
+            doc["matchType"] = "Semantic"
+            if "score" in doc:
+                doc["semantic_score"] = doc["score"]
+
+    # Add consolidated semantic documents to scores
+    consolidated_semantic_docs = list(semantic_by_original_id.values())
+    for rank, doc in enumerate(consolidated_semantic_docs, 1):
         scores.setdefault(doc["id"], 0)
         scores[doc["id"]] += 1 / (RRF_K + rank)
-        # If score from the semantic match already exists, use it
-        if "score" in doc:
-            doc["semantic_score"] = doc["score"]
-        doc["matchType"] = "Semantic"
 
-    # Combine documents
-    id2doc = {d["id"]: d for d in list1 + list2}
+    # Combine documents from both sources
+    id2doc = {d["id"]: d for d in list1 + consolidated_semantic_docs}
+
+    # Add any remaining semantic docs that didn't have original_id
+    for doc in list2:
+        if "original_id" not in doc:
+            id2doc[doc["id"]] = doc
 
     # Sort by combined RRF score
     combined_results = sorted(
         [id2doc[i] | {"score": s} for i, s in scores.items()], key=lambda x: -x["score"]
     )
 
-    # Group by original document ID (without chunk) and keep only the top N chunks per document
-    if combined_results:
-        # Only attempt grouping if any results have original_id
-        if "original_id" in combined_results[0]:
-            MAX_CHUNKS_PER_DOC = 3  # Maximum chunks to show from one document
-
-            # Group by original document
-            docs_by_original = {}
-            for doc in combined_results:
-                if "original_id" in doc:
-                    original_id = doc["original_id"]
-                    if original_id not in docs_by_original:
-                        docs_by_original[original_id] = []
-                    docs_by_original[original_id].append(doc)
-
-            # For each document, keep only the top chunks
-            filtered_results = []
-            for original_id, chunks in docs_by_original.items():
-                # Sort chunks by score
-                sorted_chunks = sorted(chunks, key=lambda x: -x["score"])
-                # Keep only top chunks
-                filtered_results.extend(sorted_chunks[:MAX_CHUNKS_PER_DOC])
-
-            # Sort overall results again by score
-            filtered_results = sorted(filtered_results, key=lambda x: -x["score"])
-
-            # Add any remaining non-chunked results
-            for doc in combined_results:
-                if "original_id" not in doc and doc not in filtered_results:
-                    filtered_results.append(doc)
-
-            return filtered_results
-
-    # Default return all results if no chunking
     return combined_results
 
 @app.get("/fusion")
