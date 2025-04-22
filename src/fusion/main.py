@@ -243,8 +243,23 @@ def hybrid_search(q: str):
 
                 # Use just the basename for the ID, but include chunk info to keep chunks separate
                 basename = os.path.basename(doc_path)
+                # Get directory structure from doc_path - could be a relative or absolute path
+                path_parts = doc_path.split("/")
+                # Extract directory name (if any) before the filename
+                dir_path = ""
+                if len(path_parts) > 1:
+                    # If the path has structure, try to preserve the last directory
+                    dir_name = path_parts[-2]
+                    # Only use directory name if it looks like a valid directory (not a hidden dir or similar)
+                    if dir_name and not dir_name.startswith("."):
+                        dir_path = f"{dir_name}/"
+
                 # Append chunk ID to make each chunk result unique
-                file_id = f"file:///var/opensemanticsearch/documents/{basename}#chunk_{chunk_id}"
+                file_id = f"file:///var/opensemanticsearch/documents/{dir_path}{basename}#chunk_{chunk_id}"
+                # For the original document ID (without chunk), preserve the directory structure
+                original_id = (
+                    f"file:///var/opensemanticsearch/documents/{dir_path}{basename}"
+                )
 
                 # Create title - use document title from payload if available, otherwise fallback to filename
                 if document_title:
@@ -255,7 +270,7 @@ def hybrid_search(q: str):
                 # Create document with all necessary fields
                 doc = {
                     "id": file_id,
-                    "original_id": f"file:///var/opensemanticsearch/documents/{basename}",
+                    "original_id": original_id,
                     "title_txt": title,
                     "content": normalize_content(content),
                     "content_txt": normalize_content(content),
@@ -264,7 +279,7 @@ def hybrid_search(q: str):
                     "content_type_ss": ["Text"],
                     "author_ss": [],
                     "container_s": "",
-                    "file_path_s": basename,
+                    "file_path_s": doc_path,
                     "file_path_basename_s": basename,
                     "chunk_id": chunk_id,
                     "highlighting": {"content_txt": [get_snippet(content, q)]},
