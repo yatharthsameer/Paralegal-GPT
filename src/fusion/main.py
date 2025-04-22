@@ -220,16 +220,25 @@ def hybrid_search(q: str):
                 chunk_id = payload.get("chunk_id", 0)
                 content = payload.get("text", "")
 
+                # Get document title from payload if available
+                document_title = payload.get("document_title", "")
+
                 # Use just the basename for the ID, but include chunk info to keep chunks separate
                 basename = os.path.basename(doc_path)
                 # Append chunk ID to make each chunk result unique
                 file_id = f"file:///var/opensemanticsearch/documents/{basename}#chunk_{chunk_id}"
 
+                # Create title - use document title from payload if available, otherwise fallback to filename
+                if document_title:
+                    title = document_title
+                else:
+                    title = os.path.splitext(basename)[0]
+
                 # Create document with all necessary fields
                 doc = {
                     "id": file_id,
                     "original_id": f"file:///var/opensemanticsearch/documents/{basename}",
-                    "title_txt": f"{os.path.splitext(basename)[0]} - Relevant Section {chunk_id+1}",
+                    "title_txt": title,
                     "content": normalize_content(content),
                     "content_txt": normalize_content(content),
                     "file_modified_dt": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
